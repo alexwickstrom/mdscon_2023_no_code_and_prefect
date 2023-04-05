@@ -12,26 +12,18 @@ from prefect_fivetran.connectors import (
     trigger_fivetran_connector_sync_and_wait_for_completion,
 )
 
+from auth_config import FivetranAuth, bq_dataset
+
 # TODO: add a new task to this flow that will sync a google sheet to your BigQuery
 # dataset.
 # Make a copy of this Google Sheet: https://docs.google.com/spreadsheets/d/14l1M2L6s6ceJpX72ntPQbj_V0jFFOE0V2dWtWqA13Lc/edit#gid=0
 # Make sure to create a named range (https://fivetran.com/docs/files/google-sheets/google-sheets-setup-guide)
 
 
-@flow
+@flow(name="step2_custom_flow")
 async def custom_pipelne(custom_job_id: str) -> None:
     """This function simulates our custom pipeline"""
     logger = get_run_logger()
-    # if you don't have gcloud command line tools installed, you can use the
-    # following code to authenticate with BigQuery
-    # You'll need to create a service account and download the credentials,
-    # Then upload the credentials to Prefect Cloud as a Secret block
-    # see https://docs.prefect.io/ui/blocks/
-    # bigquery_credentials = json.loads(Secret.load("bigquery-credentials").get())
-    # credentials = service_account.Credentials.from_service_account_info(
-    #     bigquery_credentials
-    # )
-    # bq = bigquery.Client(credentials=credentials)
     bq = bigquery.Client()
 
     logger.info(f"Job ID is: {custom_job_id}")
@@ -48,10 +40,7 @@ async def custom_pipelne(custom_job_id: str) -> None:
         sleep(0.5)
         records.append(item)
 
-    dataframe = pd.DataFrame(
-        records,
-        columns=["id", "timestamp", "value", "job_id"],
-    )
+    dataframe = pd.DataFrame(records, columns=["id", "timestamp", "value", "job_id"],)
 
     job_config = bigquery.LoadJobConfig(
         schema=[
@@ -64,14 +53,12 @@ async def custom_pipelne(custom_job_id: str) -> None:
     )
 
     job = bq.load_table_from_dataframe(
-        dataframe=dataframe,
-        destination="prefect-data-warehouse.mdscon.custom_pipeline",
-        job_config=job_config,
+        dataframe=dataframe, destination=f"{bq_dataset}.record2", job_config=job_config,
     )
     job.result()
 
 
-@flow
+@flow(name="step2_pipeline")
 async def data_pipeline(custom_job_id: str) -> None:
     logger = get_run_logger()
 
@@ -82,9 +69,17 @@ async def data_pipeline(custom_job_id: str) -> None:
     # TODO: set up a Fivetran account with API Access (this may require a credit card)
     # Create an API Key and add the credentials here: https://fivetran.com/docs/rest-api/faq/access-rest-api
     # https://fivetran.github.io/prefect-fivetran/
+    fivetran_credentials = FivetranCredentials(
+        api_key=FivetranAuth.api_key, api_secret=FivetranAuth.api_secret
+    )
 
     # TODO: Use trigger_fivetran_connector_sync_and_wait_for_completion to run
     # the fivetran sync you set up with the google sheet
+    fivetran_result = await trigger_fivetran_connector_sync_and_wait_for_completion(
+        fivetran_credentials=fivetran_credentials,
+        connector_id=FivetranAuth.connector_id,
+        poll_status_every_n_seconds=30,
+    )
 
 
 # Notice we went async here. This is because we are using the Fivetran connector,

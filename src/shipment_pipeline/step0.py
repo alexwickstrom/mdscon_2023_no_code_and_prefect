@@ -4,6 +4,7 @@ from prefect import flow, get_run_logger
 # https://docs.prefect.io/ui/cloud-quickstart/
 
 
+@flow(name="Prefect Cloud Quickstart")
 def my_flow(my_number: int) -> int:
     logger = get_run_logger()
 

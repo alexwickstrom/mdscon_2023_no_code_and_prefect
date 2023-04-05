@@ -19,20 +19,10 @@ from prefect_fivetran.connectors import (
 # arbitrary error in the flow
 
 
-@flow
-async def custom_pipelne(custom_job_id: str) -> None:
+@flow(name="step4_custompipeline")
+async def custom_pipeline(custom_job_id: str) -> None:
     """This function simulates our custom pipeline"""
     logger = get_run_logger()
-    # if you don't have gcloud command line tools installed, you can use the
-    # following code to authenticate with BigQuery
-    # You'll need to create a service account and download the credentials,
-    # Then upload the credentials to Prefect Cloud as a Secret block
-    # see https://docs.prefect.io/ui/blocks/
-    # bigquery_credentials = json.loads(Secret.load("bigquery-credentials").get())
-    # credentials = service_account.Credentials.from_service_account_info(
-    #     bigquery_credentials
-    # )
-    # bq = bigquery.Client(credentials=credentials)
     bq = bigquery.Client()
 
     logger.info(f"Job ID is: {custom_job_id}")
@@ -49,10 +39,7 @@ async def custom_pipelne(custom_job_id: str) -> None:
         sleep(0.5)
         records.append(item)
 
-    dataframe = pd.DataFrame(
-        records,
-        columns=["id", "timestamp", "value", "job_id"],
-    )
+    dataframe = pd.DataFrame(records, columns=["id", "timestamp", "value", "job_id"],)
 
     job_config = bigquery.LoadJobConfig(
         schema=[
@@ -72,7 +59,7 @@ async def custom_pipelne(custom_job_id: str) -> None:
     job.result()
 
 
-@task
+@task(name="dbt")
 async def run_dbt_models() -> None:
     """This function is a stub that represents running dbt models"""
     logger = get_run_logger()
@@ -80,7 +67,7 @@ async def run_dbt_models() -> None:
     logger.info("Models ran successfully!")
 
 
-@task
+@task(name="slack")
 async def send_slack_notification() -> None:
     """This function is a stub that represents sending a Slack notification"""
     logger = get_run_logger()
@@ -88,7 +75,7 @@ async def send_slack_notification() -> None:
     logger.info("Notification sent successfully!")
 
 
-@flow
+@flow()
 async def data_pipeline(custom_job_id: str) -> None:
     logger = get_run_logger()
 
@@ -100,11 +87,8 @@ async def data_pipeline(custom_job_id: str) -> None:
         api_key=os.environ["FIVETRAN_API_KEY"],
         api_secret=os.environ["FIVETRAN_API_SECRET"],
     )
-    fivetran_sync_result = (
-        await trigger_fivetran_connector_sync_and_wait_for_completion(
-            fivetran_credentials=fivetran_credentials,
-            connector_id="avidity_readiness",
-        )
+    fivetran_sync_result = await trigger_fivetran_connector_sync_and_wait_for_completion(
+        fivetran_credentials=fivetran_credentials, connector_id="avidity_readiness",
     )
 
     dbt_model_result = await run_dbt_models.submit()
